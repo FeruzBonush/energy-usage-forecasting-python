@@ -1,2 +1,5 @@
-# energy-usage-forecasting-python
-This project focuses on forecasting household electricity consumption using historical smart meter data. Accurate energy demand forecasting is critical for energy providers and building managers to optimize capacity planning, reduce peak load costs, and support sustainable energy usage.
+**Energy Usage Forecasting (Python, Streamlit, Machine Learning)**  
+Built an end-to-end time-series forecasting project using 4 years of smart-meter data. 
+Engineered lag and rolling features, trained a Random Forest model, and evaluated performance against a naive baseline using MAE and RMSE. 
+Developed an interactive Streamlit dashboard to visualise historical consumption and model predictions.
+
