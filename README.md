@@ -1,2 +1,9 @@
-# energy-usage-forecasting-python
-This project focuses on forecasting household electricity consumption using historical smart meter data. Accurate energy demand forecasting is critical for energy providers and building managers to optimize capacity planning, reduce peak load costs, and support sustainable energy usage.
+## 📊 Interactive Dashboard (Streamlit)
+
+This project includes an interactive Streamlit dashboard that allows users to:
+
+- Visualise historical hourly electricity consumption
+- Compare a naive baseline forecast with a Random Forest model
+- Explore actual vs predicted energy usage using a date range slider
+
+The dashboard loads the dataset locally from the `data/` folder and is designed to fail gracefully if the dataset is missing.

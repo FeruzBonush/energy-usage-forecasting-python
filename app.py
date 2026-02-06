@@ -7,9 +7,6 @@ import streamlit as st
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-
-# ---------- Data loading ----------
-
 @st.cache_data
 def load_raw_data(filepath: str) -> pd.DataFrame:
     """
@@ -33,7 +30,6 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
         else:
             raise ValueError("Expected 'Date' and 'Time' columns in txt dataset.")
     else:
-        # Sample CSV that we created from the full dataset
         df = pd.read_csv(path)
         if "datetime" in df.columns:
             df["datetime"] = pd.to_datetime(df["datetime"])
@@ -127,8 +123,6 @@ def main():
         "This app uses historical household electricity consumption data to "
         "forecast hourly energy usage and compare a Random Forest model to a naive baseline."
     )
-
-    # Decide which dataset to use
     full_data = Path("data/household_power_consumption.txt")
     sample_data = Path("data/sample_household_power_consumption.csv")
 
