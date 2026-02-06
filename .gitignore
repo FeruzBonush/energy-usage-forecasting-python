@@ -1,5 +1,6 @@
 # Ignore data files
 data/*.txt
+data/*.csv
 data/*.zip
 
 # Jupyter Notebook checkpoints
