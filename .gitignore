@@ -1,4 +1,4 @@
-# Ignore data files
+# Ignore large raw data files
 data/*.txt
 
 # Jupyter Notebook checkpoints
