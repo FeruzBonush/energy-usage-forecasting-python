@@ -9,10 +9,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 @st.cache_data
 def load_raw_data(filepath: str) -> pd.DataFrame:
-    """
-    Load the dataset from either the full txt file or the sample csv file.
-    Handles datetime parsing for both formats.
-    """
+
     path = Path(filepath)
 
     if path.suffix == ".txt":
@@ -49,10 +46,8 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
 
 
 @st.cache_data
-def prepare_hourly_data(df: pd.DataFrame):
-    """
-    Resample to hourly and create features / target.
-    """
+def prepare_hourly_data(_df: pd.DataFrame):
+    df = _df.copy()
     hourly = df["Global_active_power"].resample("H").mean()
     hourly_df = pd.DataFrame({"Global_active_power": hourly}).dropna()
 
@@ -83,7 +78,6 @@ def prepare_hourly_data(df: pd.DataFrame):
 
     return data, X, y, feature_cols
 
-
 @st.cache_resource
 def train_model(X, y, split_date="2010-09-01"):
     """
@@ -107,15 +101,12 @@ def train_model(X, y, split_date="2010-09-01"):
 
     return X_train, X_test, y_train, y_test, baseline_pred, model_pred, model
 
-
 def compute_metrics(y_true, y_pred):
     mae = mean_absolute_error(y_true, y_pred)
     rmse = math.sqrt(mean_squared_error(y_true, y_pred))
     return mae, rmse
 
-
 # ---------- Streamlit app ----------
-
 
 def main():
     st.title("🔋 Energy Usage Forecasting Dashboard")
@@ -211,7 +202,6 @@ def main():
         "compares it to a naive baseline (previous hour's value), and visualises predictions "
         "over a selected test period."
     )
-
 
 if __name__ == "__main__":
     main()
