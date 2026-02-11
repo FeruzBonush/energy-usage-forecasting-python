@@ -78,7 +78,6 @@ def prepare_hourly_data(_df: pd.DataFrame):
 
     return data, X, y, feature_cols
 
-@st.cache_resource
 def train_model(X, y, split_date="2010-09-01"):
     """
     Time-based train/test split and Random Forest training.
