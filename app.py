@@ -48,7 +48,7 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
 @st.cache_data
 def prepare_hourly_data(_df: pd.DataFrame):
     df = _df.copy()
-    hourly = df["Global_active_power"].resample("H").mean()
+    hourly = df["Global_active_power"].resample("1h").mean()
     hourly_df = pd.DataFrame({"Global_active_power": hourly}).dropna()
 
     data = hourly_df.copy()
