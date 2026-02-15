@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.model_selection import train_test_split
 
 @st.cache_data
 def load_raw_data(filepath: str) -> pd.DataFrame:
@@ -44,8 +45,6 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
     df = df.set_index("datetime").sort_index()
     return df
 
-
-@st.cache_data
 def prepare_hourly_data(_df: pd.DataFrame):
     df = _df.copy()
     hourly = df["Global_active_power"].resample("1h").mean()
@@ -56,49 +55,43 @@ def prepare_hourly_data(_df: pd.DataFrame):
     data["day_of_week"] = data.index.dayofweek
     data["month"] = data.index.month
 
-    data["lag_1"] = data["Global_active_power"].shift(1)
-    data["lag_2"] = data["Global_active_power"].shift(2)
-    data["lag_24"] = data["Global_active_power"].shift(24)
-    data["rolling_mean_24"] = data["Global_active_power"].rolling(window=24).mean()
-
-    data = data.dropna()
-
-    feature_cols = [
-        "hour",
-        "day_of_week",
-        "month",
-        "lag_1",
-        "lag_2",
-        "lag_24",
-        "rolling_mean_24",
-    ]
-
-    X = data[feature_cols]
+    X = data[["hour", "day_of_week"]]
     y = data["Global_active_power"]
 
-    return data, X, y, feature_cols
+    # Create lagged features
+    data["lag_1"] = data["Global_active_power"].shift(1)
+    X = data[["hour", "day_of_week", "lag_1"]].dropna()
+    y = y.loc[X.index]
+
+    return data, X, y, ["hour", "day_of_week", "lag_1"]
 
 def train_model(X, y, split_date="2010-09-01"):
-    """
-    Time-based train/test split and Random Forest training.
-    """
-    X_train = X[X.index < split_date]
-    X_test = X[X.index >= split_date]
-    y_train = y[y.index < split_date]
-    y_test = y[y.index >= split_date]
+    split_ts = pd.Timestamp(split_date)
+
+    # If split_date is outside your data range, fallback to an 80/20 split
+    if split_ts <= X.index.min() or split_ts >= X.index.max():
+        split_ts = X.index[int(len(X) * 0.8)]
+
+    X_train = X.loc[X.index < split_ts]
+    X_test  = X.loc[X.index >= split_ts]
+    y_train = y.loc[y.index < split_ts]
+    y_test  = y.loc[y.index >= split_ts]
 
     model = RandomForestRegressor(
-        n_estimators=100,
-        max_depth=10,
+        n_estimators=200,
         random_state=42,
         n_jobs=-1,
     )
     model.fit(X_train, y_train)
 
-    baseline_pred = X_test["lag_1"]
+    # Baseline = previous hour (requires lag_1 in X)
+    baseline_pred = X_test["lag_1"].values 
     model_pred = model.predict(X_test)
 
     return X_train, X_test, y_train, y_test, baseline_pred, model_pred, model
+
+
+
 
 def compute_metrics(y_true, y_pred):
     mae = mean_absolute_error(y_true, y_pred)
