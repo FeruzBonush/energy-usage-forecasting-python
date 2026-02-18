@@ -17,6 +17,7 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
         # Original UCI dataset format
         df = pd.read_csv(
             path,
+
             sep=";",
             na_values="?",
             low_memory=False,
@@ -136,6 +137,10 @@ def main():
     st.subheader("1. Data Overview")
     st.write("**Hourly date range:**", data.index.min(), "to", data.index.max())
     st.write("**Total hourly records:**", len(data))
+
+    st.dataframe(
+        data[["Global_active_power"]].head(200)
+    )
 
     st.line_chart(
         data["Global_active_power"].rename("Global_active_power (kW)")
