@@ -1,23 +1,24 @@
 import math
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-from sklearn.model_selection import train_test_split
+
 
 @st.cache_data
 def load_raw_data(filepath: str) -> pd.DataFrame:
-
+    """
+    Load and clean the raw household power consumption data.
+    Supports both the original UCI .txt format and a preprocessed CSV.
+    """
     path = Path(filepath)
 
     if path.suffix == ".txt":
         # Original UCI dataset format
         df = pd.read_csv(
             path,
-
             sep=";",
             na_values="?",
             low_memory=False,
@@ -29,6 +30,7 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
         else:
             raise ValueError("Expected 'Date' and 'Time' columns in txt dataset.")
     else:
+        # CSV version
         df = pd.read_csv(path)
         if "datetime" in df.columns:
             df["datetime"] = pd.to_datetime(df["datetime"])
@@ -46,8 +48,14 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
     df = df.set_index("datetime").sort_index()
     return df
 
+
 def prepare_hourly_data(_df: pd.DataFrame):
+    """
+    Resample to hourly data and create features / target.
+    """
     df = _df.copy()
+
+    # Hourly average of global active power
     hourly = df["Global_active_power"].resample("1h").mean()
     hourly_df = pd.DataFrame({"Global_active_power": hourly}).dropna()
 
@@ -56,27 +64,36 @@ def prepare_hourly_data(_df: pd.DataFrame):
     data["day_of_week"] = data.index.dayofweek
     data["month"] = data.index.month
 
-    X = data[["hour", "day_of_week"]]
+    # Baseline feature: previous hour's value
+    data["lag_1"] = data["Global_active_power"].shift(1)
+
+    # Drop first row (where lag_1 is NaN)
+    data = data.dropna()
+
+    feature_cols = ["hour", "day_of_week", "lag_1"]
+    X = data[feature_cols]
     y = data["Global_active_power"]
 
-    # Create lagged features
-    data["lag_1"] = data["Global_active_power"].shift(1)
-    X = data[["hour", "day_of_week", "lag_1"]].dropna()
-    y = y.loc[X.index]
+    return data, X, y, feature_cols
 
-    return data, X, y, ["hour", "day_of_week", "lag_1"]
 
 def train_model(X, y, split_date="2010-09-01"):
+    """
+    Time-based train/test split and Random Forest training.
+    If split_date is outside the data range (e.g. for sample data),
+    fall back to an 80/20 chronological split.
+    """
+    # Ensure we use a Timestamp for comparison
     split_ts = pd.Timestamp(split_date)
 
-    # If split_date is outside your data range, fallback to an 80/20 split
+    # Fallback if the chosen date is not inside the data range
     if split_ts <= X.index.min() or split_ts >= X.index.max():
         split_ts = X.index[int(len(X) * 0.8)]
 
     X_train = X.loc[X.index < split_ts]
-    X_test  = X.loc[X.index >= split_ts]
+    X_test = X.loc[X.index >= split_ts]
     y_train = y.loc[y.index < split_ts]
-    y_test  = y.loc[y.index >= split_ts]
+    y_test = y.loc[y.index >= split_ts]
 
     model = RandomForestRegressor(
         n_estimators=200,
@@ -85,19 +102,18 @@ def train_model(X, y, split_date="2010-09-01"):
     )
     model.fit(X_train, y_train)
 
-    # Baseline = previous hour (requires lag_1 in X)
-    baseline_pred = X_test["lag_1"].values 
+    # Baseline: previous hour's value (lag_1)
+    baseline_pred = X_test["lag_1"].values
     model_pred = model.predict(X_test)
 
     return X_train, X_test, y_train, y_test, baseline_pred, model_pred, model
-
-
 
 
 def compute_metrics(y_true, y_pred):
     mae = mean_absolute_error(y_true, y_pred)
     rmse = math.sqrt(mean_squared_error(y_true, y_pred))
     return mae, rmse
+
 
 # ---------- Streamlit app ----------
 
@@ -107,6 +123,7 @@ def main():
         "This app uses historical household electricity consumption data to "
         "forecast hourly energy usage and compare a Random Forest model to a naive baseline."
     )
+
     full_data = Path("data/household_power_consumption.txt")
     sample_data = Path("data/sample_household_power_consumption.csv")
 
@@ -127,17 +144,26 @@ def main():
         )
         st.stop()
 
+    # ---------- Load + prepare data ----------
     with st.spinner("Loading and preparing data..."):
         raw_df = load_raw_data(str(data_path))
         data, X, y, feature_cols = prepare_hourly_data(raw_df)
-        X_train, X_test, y_train, y_test, baseline_pred, model_pred, model = train_model(
-            X, y
-        )
+        (
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            baseline_pred,
+            model_pred,
+            model,
+        ) = train_model(X, y)
 
+    # ---------- 1. Data Overview ----------
     st.subheader("1. Data Overview")
     st.write("**Hourly date range:**", data.index.min(), "to", data.index.max())
     st.write("**Total hourly records:**", len(data))
 
+    # Show a small numeric-only slice to avoid Arrow LargeUtf8 issues
     st.dataframe(
         data[["Global_active_power"]].head(200)
     )
@@ -146,6 +172,7 @@ def main():
         data["Global_active_power"].rename("Global_active_power (kW)")
     )
 
+    # ---------- 2. Model Performance ----------
     st.subheader("2. Model Performance")
 
     baseline_mae, baseline_rmse = compute_metrics(y_test, baseline_pred)
@@ -161,6 +188,7 @@ def main():
         st.write(f"MAE: {model_mae:.4f}")
         st.write(f"RMSE: {model_rmse:.4f}")
 
+    # ---------- 3. Actual vs Predicted ----------
     st.subheader("3. Actual vs Predicted (Test Period)")
 
     results = pd.DataFrame(
@@ -199,6 +227,7 @@ def main():
         "compares it to a naive baseline (previous hour's value), and visualises predictions "
         "over a selected test period."
     )
+
 
 if __name__ == "__main__":
     main()
