@@ -1,21 +1,25 @@
 import math
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+
+# ---------- Data loading & preparation ----------
+
 @st.cache_data
 def load_raw_data(filepath: str) -> pd.DataFrame:
     """
-    Load and clean the raw household power consumption data.
-    Supports both the original UCI .txt format and a preprocessed CSV.
+    Load the original UCI dataset (.txt) or a CSV version.
+    Create a proper datetime index and clean Global_active_power.
     """
     path = Path(filepath)
 
     if path.suffix == ".txt":
-        # Original UCI dataset format
+        # Original UCI format
         df = pd.read_csv(
             path,
             sep=";",
@@ -42,7 +46,7 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
                 "CSV must contain either 'datetime' or 'Date' + 'Time' columns."
             )
 
-    # 👉 Force Global_active_power to numeric to avoid weird 'str' dtypes
+    # Make sure Global_active_power is numeric
     df["Global_active_power"] = pd.to_numeric(
         df["Global_active_power"], errors="coerce"
     )
@@ -50,16 +54,23 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
     # Basic cleaning
     df = df.dropna(subset=["Global_active_power"])
     df = df.set_index("datetime").sort_index()
+
     return df
 
 
+@st.cache_data
 def prepare_hourly_data(_df: pd.DataFrame):
     """
-    Resample to hourly data and create features / target.
+    Resample to hourly data and create simple calendar features.
+    Returns:
+      data  - full hourly dataframe with features
+      X     - feature matrix
+      y     - target series
+      cols  - feature column names
     """
     df = _df.copy()
 
-    # Hourly average of global active power
+    # Hourly mean
     hourly = df["Global_active_power"].resample("1h").mean()
     hourly_df = pd.DataFrame({"Global_active_power": hourly}).dropna()
 
@@ -68,29 +79,20 @@ def prepare_hourly_data(_df: pd.DataFrame):
     data["day_of_week"] = data.index.dayofweek
     data["month"] = data.index.month
 
-    # Baseline feature: previous hour's value
-    data["lag_1"] = data["Global_active_power"].shift(1)
-
-    # Drop first row (where lag_1 is NaN)
-    data = data.dropna()
-
-    feature_cols = ["hour", "day_of_week", "lag_1"]
-    X = data[feature_cols]
+    X = data[["hour", "day_of_week", "month"]]
     y = data["Global_active_power"]
 
-    return data, X, y, feature_cols
+    return data, X, y, ["hour", "day_of_week", "month"]
 
 
 def train_model(X, y, split_date="2010-09-01"):
     """
     Time-based train/test split and Random Forest training.
-    If split_date is outside the data range (e.g. for sample data),
-    fall back to an 80/20 chronological split.
+    Baseline = simple mean of the training target.
     """
-    # Ensure we use a Timestamp for comparison
     split_ts = pd.Timestamp(split_date)
 
-    # Fallback if the chosen date is not inside the data range
+    # If split_date is outside data range, fall back to 80/20 split
     if split_ts <= X.index.min() or split_ts >= X.index.max():
         split_ts = X.index[int(len(X) * 0.8)]
 
@@ -106,8 +108,8 @@ def train_model(X, y, split_date="2010-09-01"):
     )
     model.fit(X_train, y_train)
 
-    # Baseline: previous hour's value (lag_1)
-    baseline_pred = X_test["lag_1"].values
+    # Baseline: constant prediction = train mean
+    baseline_pred = np.full(len(y_test), y_train.mean(), dtype=float)
     model_pred = model.predict(X_test)
 
     return X_train, X_test, y_train, y_test, baseline_pred, model_pred, model
@@ -125,7 +127,8 @@ def main():
     st.title("🔋 Energy Usage Forecasting Dashboard")
     st.write(
         "This app uses historical household electricity consumption data to "
-        "forecast hourly energy usage and compare a Random Forest model to a naive baseline."
+        "forecast hourly energy usage and compare a Random Forest model "
+        "to a simple baseline."
     )
 
     full_data = Path("data/household_power_consumption.txt")
@@ -148,7 +151,7 @@ def main():
         )
         st.stop()
 
-    # ---------- Load + prepare data ----------
+    # ---- Load & prepare data ----
     with st.spinner("Loading and preparing data..."):
         raw_df = load_raw_data(str(data_path))
         data, X, y, feature_cols = prepare_hourly_data(raw_df)
@@ -162,23 +165,25 @@ def main():
             model,
         ) = train_model(X, y)
 
-    # ---------- 1. Data Overview ----------
+    # ---- 1. Data overview ----
     st.subheader("1. Data Overview")
     st.write("**Hourly date range:**", data.index.min(), "to", data.index.max())
     st.write("**Total hourly records:**", len(data))
 
-# Make sure preview uses classic float64
-    preview_df = data[["Global_active_power"]].head(200).copy()
-    preview_df["Global_active_power"] = preview_df["Global_active_power"].astype("float64")
-    st.dataframe(preview_df)
+    st.write("Sample of the hourly data:")
+    st.dataframe(
+        data[["Global_active_power", "hour", "day_of_week", "month"]].head(200)
+    )
 
-# Convert to plain float64 before plotting to avoid dtype issues
-    g_series = data["Global_active_power"].astype("float64")
+    # Safe line chart: make sure it's a float Series
+    st.write("Hourly Global Active Power (kW):")
     st.line_chart(
-    g_series.rename("Global_active_power (kW)")
-)
+        data["Global_active_power"]
+        .astype(float)
+        .rename("Global_active_power (kW)")
+    )
 
-    # ---------- 2. Model Performance ----------
+    # ---- 2. Model performance ----
     st.subheader("2. Model Performance")
 
     baseline_mae, baseline_rmse = compute_metrics(y_test, baseline_pred)
@@ -186,7 +191,7 @@ def main():
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**Baseline (previous hour value)**")
+        st.markdown("**Baseline (train-mean prediction)**")
         st.write(f"MAE: {baseline_mae:.4f}")
         st.write(f"RMSE: {baseline_rmse:.4f}")
     with col2:
@@ -194,14 +199,14 @@ def main():
         st.write(f"MAE: {model_mae:.4f}")
         st.write(f"RMSE: {model_rmse:.4f}")
 
-    # ---------- 3. Actual vs Predicted ----------
+    # ---- 3. Actual vs predicted ----
     st.subheader("3. Actual vs Predicted (Test Period)")
 
     results = pd.DataFrame(
         {
-            "Actual": y_test,
-            "Baseline": baseline_pred,
-            "RandomForest": model_pred,
+            "Actual": y_test.astype(float),
+            "Baseline": baseline_pred.astype(float),
+            "RandomForest": model_pred.astype(float),
         },
         index=y_test.index,
     )
@@ -224,13 +229,13 @@ def main():
 
     start, end = date_range
     mask = (results.index >= start) & (results.index <= end)
-    plot_data = results.loc[mask]
-    plot_data = plot_data.astype("float64")
+    plot_data = results.loc[mask].astype(float)
+
     st.line_chart(plot_data)
 
     st.caption(
         "This dashboard trains a Random Forest regressor on historical hourly energy usage, "
-        "compares it to a naive baseline (previous hour's value), and visualises predictions "
+        "compares it to a simple baseline (train-set average), and visualises predictions "
         "over a selected test period."
     )
 
