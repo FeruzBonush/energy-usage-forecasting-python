@@ -6,7 +6,6 @@ import streamlit as st
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-
 @st.cache_data
 def load_raw_data(filepath: str) -> pd.DataFrame:
     """
@@ -42,6 +41,11 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
             raise ValueError(
                 "CSV must contain either 'datetime' or 'Date' + 'Time' columns."
             )
+
+    #  Force Global_active_power to numeric to avoid weird 'str' dtypes
+    df["Global_active_power"] = pd.to_numeric(
+        df["Global_active_power"], errors="coerce"
+    )
 
     # Basic cleaning
     df = df.dropna(subset=["Global_active_power"])
