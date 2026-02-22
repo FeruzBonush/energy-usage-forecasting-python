@@ -42,7 +42,7 @@ def load_raw_data(filepath: str) -> pd.DataFrame:
                 "CSV must contain either 'datetime' or 'Date' + 'Time' columns."
             )
 
-    #  Force Global_active_power to numeric to avoid weird 'str' dtypes
+    # 👉 Force Global_active_power to numeric to avoid weird 'str' dtypes
     df["Global_active_power"] = pd.to_numeric(
         df["Global_active_power"], errors="coerce"
     )
@@ -167,14 +167,16 @@ def main():
     st.write("**Hourly date range:**", data.index.min(), "to", data.index.max())
     st.write("**Total hourly records:**", len(data))
 
-    # Show a small numeric-only slice to avoid Arrow LargeUtf8 issues
-    st.dataframe(
-        data[["Global_active_power"]].head(200)
-    )
+# Make sure preview uses classic float64
+    preview_df = data[["Global_active_power"]].head(200).copy()
+    preview_df["Global_active_power"] = preview_df["Global_active_power"].astype("float64")
+    st.dataframe(preview_df)
 
+# Convert to plain float64 before plotting to avoid dtype issues
+    g_series = data["Global_active_power"].astype("float64")
     st.line_chart(
-        data["Global_active_power"].rename("Global_active_power (kW)")
-    )
+    g_series.rename("Global_active_power (kW)")
+)
 
     # ---------- 2. Model Performance ----------
     st.subheader("2. Model Performance")
@@ -223,7 +225,7 @@ def main():
     start, end = date_range
     mask = (results.index >= start) & (results.index <= end)
     plot_data = results.loc[mask]
-
+    plot_data = plot_data.astype("float64")
     st.line_chart(plot_data)
 
     st.caption(
